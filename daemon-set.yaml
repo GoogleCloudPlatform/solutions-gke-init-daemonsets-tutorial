@@ -31,9 +31,6 @@ spec:
         app: default-init
     spec:
       volumes:
-      - name: dev
-        hostPath:
-          path: /dev
       - name: root-mount
         hostPath:
           path: /
@@ -51,8 +48,6 @@ spec:
         securityContext:
           privileged: true
         volumeMounts:
-        - name: dev
-          mountPath: /dev
         - name: root-mount
           mountPath: /root
         - name: entrypoint

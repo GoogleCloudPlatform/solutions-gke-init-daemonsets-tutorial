@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -59,7 +60,7 @@ data:
     fi
 
     # We use chroot to run the following commands in the host root (mounted as the /root volume in the container)
-    echo "Installing GlusterFS"
+    echo "Installing nano"
     chroot "${ROOT_MOUNT_DIR}" apt-get update
     chroot "${ROOT_MOUNT_DIR}" apt-get install -y nano
 
