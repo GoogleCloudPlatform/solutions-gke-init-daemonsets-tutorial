@@ -4,7 +4,7 @@ This reference guide demonstrates how to use
 [Kubernetes DaemonSets](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
 to initialize your Kubernetes cluster nodes.
 
-Please refer to the [following article](https://cloud.google.com/solutions/automatically-bootstrapping-gke-daemonsets) for the steps to run the code.
+Please refer to the [following article](https://cloud.google.com/solutions/automatically-bootstrapping-gke-nodes-with-daemonsets) for the steps to run the code.
 
 ## Contents of this repository
 
