@@ -12,6 +12,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ServiceAccount for DaemonSet.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: storageos-daemonset-sa
+  namespace: default
+
+---
+
+# ClusterRole for init container.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-initializer
+rules:
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - list
+  - delete
+
+---
+
+# Bind DaemonSet ServiceAccount with node-initializer ClusterRole.
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: node-initializer
+subjects:
+- kind: ServiceAccount
+  name: storageos-daemonset-sa
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: node-initializer
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -30,6 +80,8 @@ spec:
         name: node-initializer
         app: default-init
     spec:
+      serviceAccountName: storageos-daemonset-sa
+      hostNetwork: true
       volumes:
       - name: root-mount
         hostPath:
@@ -47,11 +99,14 @@ spec:
           value: /root
         securityContext:
           privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
         volumeMounts:
         - name: root-mount
           mountPath: /root
         - name: entrypoint
           mountPath: /scripts
       containers:
-      - image: "gcr.io/google-containers/pause:2.0"
+      - image: "gcr.io/google-containers/pause"
         name: pause
