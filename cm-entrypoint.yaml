@@ -1,4 +1,4 @@
-# Copyright 2019 Google LLC
+# Copyright 2021 chris@ondat.io
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,45 +24,257 @@ data:
 
     set -euo pipefail
 
-    DEBIAN_FRONTEND=noninteractive
     ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
 
-    echo "Installing dependencies"
-    apt-get update
-    apt-get install -y apt-transport-https curl gnupg lsb-release
-
-    echo "Installing gcloud SDK"
-    export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)"
-    echo "deb https://packages.cloud.google.com/apt $CLOUD_SDK_REPO main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-    apt-get update
-    apt-get install -y google-cloud-sdk
-
-    echo "Getting node metadata"
-    NODE_NAME="$(curl -sS http://metadata.google.internal/computeMetadata/v1/instance/name -H 'Metadata-Flavor: Google')"
-    ZONE="$(curl -sS http://metadata.google.internal/computeMetadata/v1/instance/zone -H 'Metadata-Flavor: Google' | awk -F  "/" '{print $4}')"
-
-    echo "Setting up disks"
-    DISK_NAME="$NODE_NAME-additional"
-
-    if ! gcloud compute disks list --filter="name:$DISK_NAME" | grep "$DISK_NAME" > /dev/null; then
-        echo "Creating $DISK_NAME"
-        gcloud compute disks create "$DISK_NAME" --size=1024 --zone="$ZONE"
+    if [ -f /etc/os-release ]
+    then
+        . /etc/os-release
     else
-        echo "$DISK_NAME already exists"
+        echo "ERROR: I need the file /etc/os-release to determine what my distribution is..."
+        exit
     fi
 
-    if ! gcloud compute instances describe "$NODE_NAME" --zone "$ZONE" --format '(disks[].source)' | grep "$DISK_NAME" > /dev/null; then
-        echo "Attaching $DISK_NAME to $NODE_NAME"
-        gcloud compute instances attach-disk "$NODE_NAME" --device-name=sdb --disk "$DISK_NAME" --zone "$ZONE"
-    else
-        echo "$DISK_NAME is already attached to $NODE_NAME"
-    fi
+    echo "We are going to use the operating system ID of $ID and version of $VERSION_ID"
 
-    # We use chroot to run the following commands in the host root (mounted as the /root volume in the container)
-    echo "Installing nano"
-    chroot "${ROOT_MOUNT_DIR}" apt-get update
-    chroot "${ROOT_MOUNT_DIR}" apt-get install -y nano
+    
+    case $ID in
+    ubuntu)
+        # Install the packages for StorageOS to be installed
+        chroot "${ROOT_MOUNT_DIR}" apt update && apt -y --no-install-recommends install linux-modules-extra-$(uname -r)
+        
+        # Configfs can be built in the kernel, hence the module 
+        # initstate file will not exist. Even though, the mount
+        # is present and working
+        echo "Checking configfs"
+        if mount | grep -q "^configfs on /sys/kernel/config"; then
+            echo "configfs mounted on sys/kernel/config"
+        else
+            echo "configfs not mounted, checking if kmod is loaded"
+            state_file=/sys/module/configfs/initstate
+            if [ -f "$state_file" ] && grep -q live "$state_file"; then
+                echo "configfs mod is loaded"
+            else
+                echo "configfs not loaded, executing: modprobe -b configfs"
+                chroot "${ROOT_MOUNT_DIR}" modprobe -b configfs
+            fi
 
-    echo "Loading Kernel modules"
-    chroot "${ROOT_MOUNT_DIR}" modprobe test_module
+            if mount | grep -q configfs; then
+                echo "configfs mounted"
+            else
+                echo "mounting configfs /sys/kernel/config"
+                mount -t configfs configfs /sys/kernel/config
+            fi
+        fi
+
+        target_dir=/sys/kernel/config/target
+        core_dir="$target_dir"/core
+        loop_dir="$target_dir"/loopback
+
+        # Enable a mod if not present
+        # /sys/module/$modname/initstate has got the word "live"
+        # in case the kernel module is loaded and running 
+        for mod in target_core_mod tcm_loop target_core_file uio target_core_user; do
+            state_file="${ROOT_MOUNT_DIR}"/sys/module/$mod/initstate
+            if [ -f "$state_file" ] && grep -q live "$state_file"; then
+                echo "Module $mod is running"
+            else 
+                echo "Module $mod is not running"
+                echo "--> executing \"modprobe -b $mod\""
+                if ! chroot "${ROOT_MOUNT_DIR}" modprobe -b $mod; then
+                    # core_user and uio are not mandatory
+                    if [ "$mod" != "target_core_user" ] && [ "$mod" != "uio" ]; then
+                        exit 1
+                    else 
+                        echo "Couldn't enable $mod"
+                    fi
+                fi
+                # Enable module at boot
+                chroot "${ROOT_MOUNT_DIR}" mkdir -p /etc/modules-load.d
+                [ ! -f /etc/modules-load.d/lio.conf ] && chroot "${ROOT_MOUNT_DIR}" echo $mod >> /etc/modules-load.d/lio.conf # create file if doesn't exist
+            fi
+        done
+
+        # Check if the modules loaded have its
+        # directories available on top of configfs
+
+        [ ! -d "$target_dir" ] && echo "$target_dir doesn't exist" && module_error_log "target_core_mod" "$target_dir"
+        [ ! -d "$core_dir" ]   && echo "$core_dir doesn't exist"   && module_error_log "target_core_file" "$core_dir"
+        [ ! -d "$loop_dir" ]   && echo "$loop_dir doesn't exist. Creating dir manually..." && mkdir $loop_dir
+
+        echo "LIO set up is ready!"
+
+      # Install the wget and gnupg packages to be able to setup a repo for elastio
+      chroot "${ROOT_MOUNT_DIR}" apt-get install -y wget gnupg
+      chroot "${ROOT_MOUNT_DIR}" wget https://repo.assur.io/release/linux/deb/Debian/10/pool/elastio-repo_0.0.2-1debian10_all.deb
+      chroot "${ROOT_MOUNT_DIR}" dpkg -i elastio-repo_0.0.2-1debian10_all.deb
+      chroot "${ROOT_MOUNT_DIR}" apt install -y elastio
+    ;;
+    fedora | rhel | centos)
+      echo " Come back to Fedora in a bit "
+    ;;
+    debian)
+      echo "Come back to Debian in a bit"
+    ;;
+    amzn)
+      echo "Come back to amazon linux in a bit"
+    ;;
+    esac 
+
+
+    exit 0
+
+
+    # DEBIAN_FRONTEND=noninteractive
+    # ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
+
+    # echo "Installing dependencies"
+    # apt-get update
+    # apt-get install -y apt-transport-https curl gnupg lsb-release
+
+    # echo "Installing gcloud SDK"
+    # export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)"
+    # echo "deb https://packages.cloud.google.com/apt $CLOUD_SDK_REPO main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+    # curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+    # apt-get update
+    # apt-get install -y google-cloud-sdk
+
+    # echo "Getting node metadata"
+    # NODE_NAME="$(curl -sS http://metadata.google.internal/computeMetadata/v1/instance/name -H 'Metadata-Flavor: Google')"
+    # ZONE="$(curl -sS http://metadata.google.internal/computeMetadata/v1/instance/zone -H 'Metadata-Flavor: Google' | awk -F  "/" '{print $4}')"
+
+    # echo "Setting up disks"
+    # DISK_NAME="$NODE_NAME-additional"
+
+    # if ! gcloud compute disks list --filter="name:$DISK_NAME" | grep "$DISK_NAME" > /dev/null; then
+    #     echo "Creating $DISK_NAME"
+    #     gcloud compute disks create "$DISK_NAME" --size=1024 --zone="$ZONE"
+    # else
+    #     echo "$DISK_NAME already exists"
+    # fi
+
+    # if ! gcloud compute instances describe "$NODE_NAME" --zone "$ZONE" --format '(disks[].source)' | grep "$DISK_NAME" > /dev/null; then
+    #     echo "Attaching $DISK_NAME to $NODE_NAME"
+    #     gcloud compute instances attach-disk "$NODE_NAME" --device-name=sdb --disk "$DISK_NAME" --zone "$ZONE"
+    # else
+    #     echo "$DISK_NAME is already attached to $NODE_NAME"
+    # fi
+
+    # # We use chroot to run the following commands in the host root (mounted as the /root volume in the container)
+    # echo "Installing nano"
+    # chroot "${ROOT_MOUNT_DIR}" apt-get update
+    # chroot "${ROOT_MOUNT_DIR}" apt-get install -y nano
+
+    # echo "Loading Kernel modules"
+    # chroot "${ROOT_MOUNT_DIR}" modprobe test_module
+
+#####################
+# To work out the OS type - looking at the /etc/os-release file of some common operating system derivatives.
+# Added below the output from a Debian, Ubuntu, RHEL and Fedora VM.
+
+# $ cat os-release 
+# NAME="Ubuntu"
+# VERSION="20.04.3 LTS (Focal Fossa)"
+# ID=ubuntu
+# ID_LIKE=debian
+# PRETTY_NAME="Ubuntu 20.04.3 LTS"
+# VERSION_ID="20.04"
+# HOME_URL="https://www.ubuntu.com/"
+# SUPPORT_URL="https://help.ubuntu.com/"
+# BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+# PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+# VERSION_CODENAME=focal
+# UBUNTU_CODENAME=focal
+
+# $ cat /etc/os-release 
+# NAME="Fedora Linux"
+# VERSION="35 (Workstation Edition)"
+# ID=fedora
+# VERSION_ID=35
+# VERSION_CODENAME=""
+# PLATFORM_ID="platform:f35"
+# PRETTY_NAME="Fedora Linux 35 (Workstation Edition)"
+# ANSI_COLOR="0;38;2;60;110;180"
+# LOGO=fedora-logo-icon
+# CPE_NAME="cpe:/o:fedoraproject:fedora:35"
+# HOME_URL="https://fedoraproject.org/"
+# DOCUMENTATION_URL="https://docs.fedoraproject.org/en-US/fedora/f35/system-administrators-guide/"
+# SUPPORT_URL="https://ask.fedoraproject.org/"
+# BUG_REPORT_URL="https://bugzilla.redhat.com/"
+# REDHAT_BUGZILLA_PRODUCT="Fedora"
+# REDHAT_BUGZILLA_PRODUCT_VERSION=35
+# REDHAT_SUPPORT_PRODUCT="Fedora"
+# REDHAT_SUPPORT_PRODUCT_VERSION=35
+# PRIVACY_POLICY_URL="https://fedoraproject.org/wiki/Legal:PrivacyPolicy"
+# VARIANT="Workstation Edition"
+# VARIANT_ID=workstation
+
+# $ cat /etc/os-release 
+# NAME="Red Hat Enterprise Linux"
+# VERSION="8.5 (Ootpa)"
+# ID="rhel"
+# ID_LIKE="fedora"
+# VERSION_ID="8.5"
+# PLATFORM_ID="platform:el8"
+# PRETTY_NAME="Red Hat Enterprise Linux 8.5 (Ootpa)"
+# ANSI_COLOR="0;31"
+# CPE_NAME="cpe:/o:redhat:enterprise_linux:8::baseos"
+# HOME_URL="https://www.redhat.com/"
+# DOCUMENTATION_URL="https://access.redhat.com/documentation/red_hat_enterprise_linux/8/"
+# BUG_REPORT_URL="https://bugzilla.redhat.com/"
+
+# REDHAT_BUGZILLA_PRODUCT="Red Hat Enterprise Linux 8"
+# REDHAT_BUGZILLA_PRODUCT_VERSION=8.5
+# REDHAT_SUPPORT_PRODUCT="Red Hat Enterprise Linux"
+# REDHAT_SUPPORT_PRODUCT_VERSION="8.5"
+
+# $ cat /etc/os-release 
+# PRETTY_NAME="Debian GNU/Linux 10 (buster)"
+# NAME="Debian GNU/Linux"
+# VERSION_ID="10"
+# VERSION="10 (buster)"
+# VERSION_CODENAME=buster
+# ID=debian
+# HOME_URL="https://www.debian.org/"
+# SUPPORT_URL="https://www.debian.org/support"
+# BUG_REPORT_URL="https://bugs.debian.org/"
+
+# $ cat /etc/os-release 
+# NAME="Amazon Linux"
+# VERSION="2"
+# ID="amzn"
+# ID_LIKE="centos rhel fedora"
+# VERSION_ID="2"
+# PRETTY_NAME="Amazon Linux 2"
+# ANSI_COLOR="0;33"
+# CPE_NAME="cpe:2.3:o:amazon:amazon_linux:2"
+# HOME_URL="https://amazonlinux.com/"
+
+
+#url=https://repo.assur.io/release/linux/rpm/Fedora/35/noarch/Packages/elastio-repo-0.0.2-1.fc35.noarch.rpm
+# url=$repo_url/rpm/$1/$2/noarch/Packages/elastio-repo-0.0.2-1.$3$2.noarch.rpm
+# curl -s -I -L -m 2 https://repo.assur.io/release/linux/rpm/Fedora/35/noarch/Packages/elastio-repo-0.0.2-1.fc35.noarch.rpm
+# yum localinstall -y https://repo.assur.io/release/linux/rpm/Fedora/35/noarch/Packages/elastio-repo-0.0.2-1.fc35.noarch.rpm
+# yum --setopt=install_weak_deps=False install -y elastio
+
+# check_installed wget  || apt-get install -y wget
+# check_installed gnupg || apt-get install -y gnupg
+
+# pkg=elastio-repo_0.0.2-1debian${debian_ver}_all.deb
+#     wget $repo_url/deb/Debian/${debian_ver}/pool/$pkg
+#     dpkg -i $pkg && rm -f $pkg
+#     apt-get update
+#     if [ ! -z "$driver" ] && [ ! -z "$cli" ]; then
+#         # Install elastio and driver as dependency
+#         apt-get install -y elastio
+#     elif [ ! -z "$driver" ]; then
+#         # Install just driver
+#         apt-get install -y elastio-snap-utils
+#     elif [ ! -z "$cli" ]; then
+#         # Install just elastio w/o driver as dependency
+#         apt-get --no-install-recommends install -y elastio
+#     fi
+
+# apt install linux-headers-$(uname -r)
+# wget https://repo.assur.io/release/linux/deb/Debian/10/pool/elastio-repo_0.0.2-1debian10_all.deb
+# dpkg -i elastio-repo_0.0.2-1debian10_all.deb
+# apt-get install -y elastio
