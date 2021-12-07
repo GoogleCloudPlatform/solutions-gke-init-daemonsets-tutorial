@@ -36,20 +36,21 @@ data:
     fi
 
     echo "We are going to use the operating system ID of $ID and version of $VERSION_ID"
-
     
     case $ID in
     ubuntu)
         # Install the packages for StorageOS to be installed
         chroot "${ROOT_MOUNT_DIR}" apt update && chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-modules-extra-$(uname -r)
+        
+        sleep 30
 
-        mount
+        # configfs on /root/sys/kernel/config type configfs (rw,relatime)
         
         # Configfs can be built in the kernel, hence the module 
         # initstate file will not exist. Even though, the mount
         # is present and working
         echo "Checking configfs"
-        if mount | grep -q "^configfs on "${ROOT_MOUNT_DIR}"/sys/kernel/config"; then
+        if mount | grep -q "^configfs on /root/sys/kernel/config"; then
             echo "configfs mounted on /sys/kernel/config"
         else
             echo "configfs not mounted, checking if kmod is loaded"
@@ -93,23 +94,29 @@ data:
                 fi
                 # Enable module at boot
                 chroot "${ROOT_MOUNT_DIR}" mkdir -p /etc/modules-load.d
-                [ ! -f /etc/modules-load.d/lio.conf ] && chroot "${ROOT_MOUNT_DIR}" echo $mod >> /etc/modules-load.d/lio.conf # create file if doesn't exist
+                [ ! -f "${ROOT_MOUNT_DIR}"/etc/modules-load.d/lio.conf ] && chroot "${ROOT_MOUNT_DIR}" echo $mod >> /etc/modules-load.d/lio.conf # create file if doesn't exist
             fi
         done
 
-        # Check if the modules loaded have its
+        # Check if the modules loaded have its  
         # directories available on top of configfs
 
-        [ ! -d "$target_dir" ] && echo "$target_dir doesn't exist" && module_error_log "target_core_mod" "$target_dir"
-        [ ! -d "$core_dir" ]   && echo "$core_dir doesn't exist"   && module_error_log "target_core_file" "$core_dir"
-        [ ! -d "$loop_dir" ]   && echo "$loop_dir doesn't exist. Creating dir manually..." && mkdir $loop_dir
+        [ ! -d "${ROOT_MOUNT_DIR}""$target_dir" ] && echo "$target_dir doesn't exist" && exit 1
+        [ ! -d "${ROOT_MOUNT_DIR}""$core_dir" ]   && echo "$core_dir doesn't exist"   && exit 1
+        [ ! -d "${ROOT_MOUNT_DIR}""$loop_dir" ]   && echo "$loop_dir doesn't exist. Creating dir manually..." && mkdir "${ROOT_MOUNT_DIR}"$loop_dir
 
         echo "LIO set up is ready!"
 
       # Install the wget and gnupg packages to be able to setup a repo for elastio
       chroot "${ROOT_MOUNT_DIR}" apt install -y wget gnupg
+
+      sleep 20
+
       chroot "${ROOT_MOUNT_DIR}" wget https://repo.assur.io/release/linux/deb/Debian/10/pool/elastio-repo_0.0.2-1debian10_all.deb
       chroot "${ROOT_MOUNT_DIR}" dpkg -i elastio-repo_0.0.2-1debian10_all.deb
+      
+      sleep 20
+
       chroot "${ROOT_MOUNT_DIR}" apt install -y elastio
     ;;
     fedora | rhel | centos)
