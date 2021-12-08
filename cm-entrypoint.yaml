@@ -40,7 +40,7 @@ data:
     case $ID in
     ubuntu)
         # Install the packages for StorageOS to be installed
-        chroot "${ROOT_MOUNT_DIR}" apt update && chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-modules-extra-$(uname -r)
+        chroot "${ROOT_MOUNT_DIR}" apt update && chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-modules-extra-$(uname -r) && chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-headers-$(uname -r)
         
         sleep 30
 
