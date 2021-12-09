@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# For this script to succeed we will need access to:
+# 1. The repos for kernel modules and kernel headers for the distribution in question.
+# Internet or proxied access to https://repo.assur.io if you also want to run the elastio module install
+# 
+
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -21,36 +27,63 @@ metadata:
 data:
   entrypoint.sh: |
     #!/usr/bin/env bash
+
+    # I am turning on the verbose output here to enable easier debug. The init container just runs once and then exits and a pause container is then started so there is little overhead to having debug on.
+    # Note that init container neds to be named so if you want to look at the logs use a command like "kubectl logs node-initializer-xxxxx -n default -c node-initializer" where the -c flag is used to name the init container.
+
     set -vx
+    
+    # Going to set the script to fail and return the error code immediately in case of any failures.
 
     set -euo pipefail
 
+    # We want to use the container to manipulate the underlying k8s host. To do this we are going to mount the host operating system using a k8s hostpath mount.
+    # By default we are going to mount the root (/) filesystem of the underlying host at /root so we set this as a default variable to use in the script.
+
     ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
+
+    # As we iterate the script for more operating systems support in the container host, we will need logic and decisions based on apt/rpm/dnf/yum/dpkg based components.
+    # The default approach in modern distributions is to create a meta-data file with the details of distribution, version etc into the /etc/os-release file.
+    # We are going to detect this and just use the ID and VERSION_ID to steer the logic for this.
 
     if [ -f /etc/os-release ]
     then
         . /etc/os-release
     else
         echo "ERROR: I need the file /etc/os-release to determine what my distribution is..."
-        exit
+        exit 5
     fi
 
     echo "We are going to use the operating system ID of $ID and version of $VERSION_ID"
     
+    # Switching logic which will branch based on the apt/yum/dnf system and whether the Linux I/O components are installed.
+
     case $ID in
     ubuntu)
         # Install the packages for StorageOS to be installed
-        chroot "${ROOT_MOUNT_DIR}" apt update && chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-modules-extra-$(uname -r) && chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-headers-$(uname -r)
-        
-        sleep 30
+        # Storage OS uses the standard Open Source Linux-IO SCSI target components. In Ubuntu this is provided in the linux kernel modules extras packages rather than being part of the base kernel.
+        # At the moment we are also installing the elastio custom kernel module. To compile this with linux DKMS support, we also will need the linux headers so that this can be compiled.
+        # We of course start with an apt update just to make sure all packages including apt are up to date.
+        # These installs are chained with && success logic so that we wait for the apt cache and apt database to be unlocked before the next step starts.
+        # Also note the chroot. By running this under chroot at the mount point of the underlying hostmount from the container host. We run this as if we were running the commands on the underlying host.
+        # This means we install and update the apt database of the underlying container host. 
 
-        # configfs on /root/sys/kernel/config type configfs (rw,relatime)
+        chroot "${ROOT_MOUNT_DIR}" apt update && \
+            chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-modules-extra-$(uname -r) && \
+            chroot "${ROOT_MOUNT_DIR}" apt -y --no-install-recommends install linux-headers-$(uname -r) \
+            echo "Complete apt update, apt install linux modules and and apt install linux headers"
         
+        # The next chunk is all about checking that the linux modules are actually loaded that we need. 
+        # As above, just to re-iterate, these are all standard linux modules that are part of the linux kernel tree. There is nothing here that would taint the kernel.
+        # Note that as we are mounting the underlying container host at the /root (default) hostpath - the checks need to account for this alternative path.
+        
+        # The first part is configfs to allow user space processes to manipulate the LIO devices - https://lwn.net/Articles/149005/
+
         # Configfs can be built in the kernel, hence the module 
         # initstate file will not exist. Even though, the mount
         # is present and working
         echo "Checking configfs"
-        if mount | grep -q "^configfs on /root/sys/kernel/config"; then
+        if mount | grep -q "^configfs on ${ROOT_MOUNT_DIR}/sys/kernel/config"; then
             echo "configfs mounted on /sys/kernel/config"
         else
             echo "configfs not mounted, checking if kmod is loaded"
@@ -69,6 +102,8 @@ data:
                 chroot "${ROOT_MOUNT_DIR}" mount -t configfs configfs /sys/kernel/config
             fi
         fi
+
+        # The next part is checking that the LIO modules are loaded
 
         target_dir=/sys/kernel/config/target
         core_dir="$target_dir"/core
@@ -107,25 +142,27 @@ data:
 
         echo "LIO set up is ready!"
 
-      # Install the wget and gnupg packages to be able to setup a repo for elastio
-      chroot "${ROOT_MOUNT_DIR}" apt install -y wget gnupg
+        # This last part is not Ondat related - it is aimed at installing a kernel module from elastio to test snapshotting with.
 
-      sleep 20
+        # Install the wget and gnupg packages to be able to setup a repo for elastio
+        chroot "${ROOT_MOUNT_DIR}" apt install -y wget gnupg
 
-      chroot "${ROOT_MOUNT_DIR}" wget https://repo.assur.io/release/linux/deb/Debian/10/pool/elastio-repo_0.0.2-1debian10_all.deb
+        sleep 20
 
-      sleep 20
+        chroot "${ROOT_MOUNT_DIR}" wget https://repo.assur.io/release/linux/deb/Debian/10/pool/elastio-repo_0.0.2-1debian10_all.deb
 
-      chroot "${ROOT_MOUNT_DIR}" dpkg -i elastio-repo_0.0.2-1debian10_all.deb
+        sleep 20
 
-      sleep 10
+        chroot "${ROOT_MOUNT_DIR}" dpkg -i elastio-repo_0.0.2-1debian10_all.deb
 
-      chroot "${ROOT_MOUNT_DIR}" apt update
-      
-      sleep 10
+        sleep 10
 
-      chroot "${ROOT_MOUNT_DIR}" apt install -y elastio
-    ;;
+        chroot "${ROOT_MOUNT_DIR}" apt update
+        
+        sleep 10
+
+        chroot "${ROOT_MOUNT_DIR}" apt install -y elastio
+        ;;
     fedora | rhel | centos)
       echo " Come back to Fedora in a bit "
     ;;
