@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -31,27 +31,28 @@ spec:
         app: default-init
     spec:
       volumes:
-      - name: root-mount
-        hostPath:
-          path: /
-      - name: entrypoint
-        configMap:
-          name: entrypoint
-          defaultMode: 0744
-      initContainers:
-      - image: ubuntu:18.04
-        name: node-initializer
-        command: ["/scripts/entrypoint.sh"]
-        env:
-        - name: ROOT_MOUNT_DIR
-          value: /root
-        securityContext:
-          privileged: true
-        volumeMounts:
         - name: root-mount
-          mountPath: /root
+          hostPath:
+            path: /
         - name: entrypoint
-          mountPath: /scripts
+          configMap:
+            name: entrypoint
+            defaultMode: 0744
+      initContainers:
+        - image: ubuntu:18.04
+          name: node-initializer
+          command: ["/scripts/entrypoint.sh"]
+          env:
+            - name: ROOT_MOUNT_DIR
+              value: /root
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: root-mount
+              mountPath: /root
+            - name: entrypoint
+              mountPath: /scripts
       containers:
-      - image: "gcr.io/google-containers/pause:2.0"
-        name: pause
+        - image: "gcr.io/google-containers/pause:2.0"
+          name: pause
+...
