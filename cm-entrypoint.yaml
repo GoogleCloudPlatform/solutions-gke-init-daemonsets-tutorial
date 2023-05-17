@@ -65,5 +65,6 @@ data:
     chroot "${ROOT_MOUNT_DIR}" apt-get install -y nano
 
     echo "Loading Kernel modules"
-    chroot "${ROOT_MOUNT_DIR}" modprobe test_module
+    # Load the bridge kernel module as an example
+    chroot "${ROOT_MOUNT_DIR}" modprobe bridge
 ...

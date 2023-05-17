@@ -33,7 +33,7 @@ else
     exit 2
 fi
 
-if gcloud compute ssh "$NODE_NAME" --zone "$ZONE" --command "lsmod | grep test_module" > /dev/null 2>&1; then
+if gcloud compute ssh "$NODE_NAME" --zone "$ZONE" --command "lsmod | grep bridge" > /dev/null 2>&1; then
     echo "Kernel modules loaded successfully on $NODE_NAME ($ZONE)"
 else
     echo "Kernel modules not loaded successfully on $NODE_NAME ($ZONE)"
