@@ -1,0 +1,51 @@
+{
+    "failed_checks": [
+        {
+            "file": "/cm-entrypoint.yaml",
+            "findings": [
+                {
+                    "resource": "ConfigMap.default.entrypoint",
+                    "check_ids": [
+                        "CKV_K8S_21"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/daemon-set.yaml",
+            "findings": [
+                {
+                    "resource": "DaemonSet.default.node-initializer",
+                    "check_ids": [
+                        "CKV_K8S_10",
+                        "CKV_K8S_11",
+                        "CKV_K8S_12",
+                        "CKV_K8S_13",
+                        "CKV_K8S_15",
+                        "CKV_K8S_16",
+                        "CKV_K8S_20",
+                        "CKV_K8S_21",
+                        "CKV_K8S_22",
+                        "CKV_K8S_23",
+                        "CKV_K8S_28",
+                        "CKV_K8S_29",
+                        "CKV_K8S_30",
+                        "CKV_K8S_31",
+                        "CKV_K8S_37",
+                        "CKV_K8S_38",
+                        "CKV_K8S_40",
+                        "CKV_K8S_43",
+                        "CKV_K8S_8",
+                        "CKV_K8S_9"
+                    ]
+                },
+                {
+                    "resource": "Pod.default.node-initializer.name-node-initializer.app-default-init",
+                    "check_ids": [
+                        "CKV2_K8S_6"
+                    ]
+                }
+            ]
+        }
+    ]
+}

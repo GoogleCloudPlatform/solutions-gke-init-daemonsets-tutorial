@@ -1,0 +1,36 @@
+# EditorConfig: http://EditorConfig.org
+root = true
+
+# Unix-style newlines at the bottom of every file
+[*]
+end_of_line = lf
+charset = utf-8
+
+# Tab indentation
+indent_style = space
+indent_size = 4
+
+# Make sure every file has a blank line at the end
+insert_final_newline = true
+
+# Remove any whitespace characters preceding newline characters
+trim_trailing_whitespace = true
+
+# Give operators breathing room, but not brackets
+spaces_around_operators = true
+spaces_around_brackets = false
+
+[*.{json,lock.hcl,md,tf,tfvars,yml,yaml}]
+indent_size = 2
+
+[LICENSE]
+indent_size = unset
+
+# Don't try to format binary files
+[*.tfvars.enc]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset
