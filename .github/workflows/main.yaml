@@ -21,7 +21,7 @@ jobs:
           # list of files that changed across commits
           fetch-depth: 0
       - name: Super-Linter
-        uses: super-linter/super-linter@v6.6.0
+        uses: super-linter/super-linter@v6.7.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_ALL_CODEBASE: true
