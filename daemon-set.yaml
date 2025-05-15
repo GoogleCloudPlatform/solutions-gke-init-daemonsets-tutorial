@@ -39,7 +39,7 @@ spec:
             name: entrypoint
             defaultMode: 0744
       initContainers:
-        - image: ubuntu:18.04
+        - image: ubuntu:24.04
           name: node-initializer
           command: ["/scripts/entrypoint.sh"]
           env:
@@ -53,6 +53,6 @@ spec:
             - name: entrypoint
               mountPath: /scripts
       containers:
-        - image: "gcr.io/google-containers/pause:2.0"
+        - image: "k8s.gcr.io/pause:3.3"
           name: pause
 ...
