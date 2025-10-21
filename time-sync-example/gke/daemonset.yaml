@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-initializer
+  labels:
+    app: default-init
+  annotations:
+    checkov.io/skip1: CKV_K8S_21:This service account is part of the node-initializer app.
+spec:
+  selector:
+    matchLabels:
+      app: default-init
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: node-initializer
+        app: default-init
+    spec:
+      serviceAccount: node-initializer-sa
+      # Startup taints are meant to be used when there is an operation that has to complete before
+      # any pods can run on the node
+      tolerations:  # The daemonset has the toleration to get scheduled on the new nodes
+      - key: "startup-taint.cluster-autoscaler.kubernetes.io/node-initializer"  # NOTE: In GKE 1.27, use ignore-taint instead of startup-taint
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      - key: "kubernetes.io/arch"
+        operator: "Equal"
+        value: "arm64"
+        effect: "NoSchedule"
+      hostPID: true
+      hostIPC: true
+      hostNetwork: true
+      volumes:
+        - name: root-mount
+          hostPath:
+            path: /
+        - name: entrypoint
+          configMap:
+            name: entrypoint
+            defaultMode: 0744
+      initContainers:
+        - image: ubuntu:22.04
+          name: node-initializer
+          command: ["/scripts/entrypoint.sh"]
+          env:
+            - name: ROOT_MOUNT_DIR
+              value: /root
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: root-mount
+              mountPath: /root
+            - name: entrypoint
+              mountPath: /scripts
+        - name: logshipper
+          image: ubuntu:22.04
+          restartPolicy: Always
+          command: ['sh', '-c', 'tail -F ${ROOT_MOUNT_DIR}/var/log/chrony/tracking.log | xargs -L 1 echo ${NODE_NAME}: ']
+          env:
+            - name: ROOT_MOUNT_DIR
+              value: /root
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: root-mount
+              mountPath: /root
+      containers:
+        - image: "k8s.gcr.io/pause:3.3"
+          name: pause

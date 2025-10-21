@@ -1,0 +1,37 @@
+{
+    "displayName": "Overall Clock Accuracy",
+    "dashboardFilters": [],
+    "labels": {},
+    "mosaicLayout": {
+        "columns": 48,
+        "tiles": [
+            {
+                "width": 28,
+                "height": 28,
+                "widget": {
+                    "xyChart": {
+                        "dataSets": [
+                            {
+                                "plotType": "LINE",
+                                "targetAxis": "Y1",
+                                "timeSeriesQuery": {
+                                    "prometheusQuery": "label_replace(\nhistogram_quantile(1, sum by (le, resourceName) (\nincrease(logging_googleapis_com:phc_clock_max_error_bucket{monitored_resource=\"k8s_container\"}[1m])\n)) * 1000000000,\n\"instance_name\", \"$1\", \"resourceName\", \"(.*)\"\n) +\non(instance_name) (\ncompute_googleapis_com:instance_clock_accuracy_ptp_kvm_nanosecond_accuracy{monitored_resource=\"gce_instance\"}\n)\n",
+                                    "unitOverride": "ns"
+                                }
+                            }
+                        ],
+                        "chartOptions": {
+                            "displayHorizontal": false,
+                            "mode": "COLOR"
+                        },
+                        "yAxis": {
+                            "label": "Clock Accuracy",
+                            "scale": "LINEAR"
+                        },
+                        "thresholds": []
+                    }
+                }
+            }
+        ]
+    }
+}
