@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: entrypoint
+  labels:
+    app: default-init
+data:
+  entrypoint.sh: |
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    DEBIAN_FRONTEND=noninteractive
+    ROOT_MOUNT_DIR="${ROOT_MOUNT_DIR:-/root}"
+
+    echo "Loading PTP-KVM Kernel module"
+    chroot "${ROOT_MOUNT_DIR}" modprobe ptp_kvm
+    echo "ptp_kvm" >${ROOT_MOUNT_DIR}/etc/modules-load.d/ptp_kvm.conf
+
+
+    echo "Configuring chrony to leverage PTP-KVM"
+    grep -v "^log " ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf > /tmp/chrony_new.conf && mv /tmp/chrony_new.conf ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf
+    grep -v "^server " ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf > /tmp/chrony_new.conf && mv /tmp/chrony_new.conf ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf
+    grep -v "^pool " ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf > /tmp/chrony_new.conf && mv /tmp/chrony_new.conf ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf
+    grep "^refclock " ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf > /dev/null || echo "refclock PHC /dev/ptp_kvm poll -1 prefer" >> ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf
+    grep "^log " ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf > /dev/null || echo "log rawmeasurements refclocks selection statistics tracking" >> ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf
+    grep "^logdir " ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf > /dev/null ||  echo "logdir /var/log/chrony" >> ${ROOT_MOUNT_DIR}/etc/chrony/chrony.conf
+    chroot "${ROOT_MOUNT_DIR}" mkdir -p /var/log/chrony
+    chroot "${ROOT_MOUNT_DIR}" chown ntp: /var/log/chrony || echo "Chown failed - OK on Ubuntu"
+
+    echo "Restarting chrony"
+    chroot "${ROOT_MOUNT_DIR}" systemctl restart chronyd
+
+    untaint() {
+      echo "Node name is: ${NODE_NAME}"
+      echo "Finding the taint"
+
+      TAINT_KEY=startup-taint.cluster-autoscaler.kubernetes.io/node-initializer
+      TAINT_VALUE=true
+      TAINT_EFFECT=NoSchedule
+
+      LABEL_KEY=node-initializer
+      LABEL_VALUE=done
+
+      # In case that the untaint patch failed due to a conflict, keep retrying until the taint cannot be found.
+      while true
+      do
+        taint=$(${ROOT_MOUNT_DIR}/home/kubernetes/bin/kubectl get node "${NODE_NAME}" \
+          -o jsonpath="{.spec.taints[?(@.key==\"${TAINT_KEY}\")]}")
+
+        if [[ -n "$taint" ]]; then
+          echo "Found the taint. Untainting."
+          ${ROOT_MOUNT_DIR}/home/kubernetes/bin/kubectl taint nodes ${NODE_NAME} \
+            ${TAINT_KEY}:${TAINT_EFFECT}-
+          ${ROOT_MOUNT_DIR}/home/kubernetes/bin/kubectl label nodes ${NODE_NAME} \
+            ${LABEL_KEY}=${LABEL_VALUE}
+              else
+          echo "Didn't find the taint. Nothing to do."
+          return
+        fi
+      done
+    }
+    # Give chrony a second to stabilize the clock
+    sleep 1
+    untaint

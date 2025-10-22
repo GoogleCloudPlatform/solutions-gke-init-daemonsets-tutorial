@@ -23,3 +23,13 @@ As part of the example, the script runs both privileged and un-privileged comman
 ### Verification script
 
 This [`verify-init.sh`](verify-init.sh) runs checks on the nodes of the cluster to verify that the initialization completed successfully.
+
+### TimeSync example
+
+The folder [`time-sync-example`](time-sync-example) contains a real-world
+example: a Compute Engine (single VM + OpsAgent) configuration for accurately
+synchronizing the VM clock with monitoring of the clock synchronization
+accuracy, alongside the equivalent Kubernetes Engine variant - a GKE DaemonSet to configure
+the VMs in the node pool, supporting taint/untaint flow to prevent workload
+execution on nodes without synchronized time, and monitoring solution based on
+GKE's log collection flow.
