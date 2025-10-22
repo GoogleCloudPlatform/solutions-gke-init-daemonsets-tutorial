@@ -42,3 +42,41 @@ VM with a startup script that is composed of 2 other scripts:
 * [`time-sync-configure-ops-agent-monitor.sh`](gce/time-sync-configure-ops-agent-monitor.sh) -
   script for installing OpsAgent and configuring it to monitor Chrony's tracking
   accuracy
+
+## GKE Configuration
+
+The scripts to configure a GKE cluster with PTP-KVM based clock synchronization are kept in the [`gke`](gke) folder. Expected usage is:
+
+```bash
+# configure the project for metric collection and parsing/display (note, this is different from the GCE one)
+./create_gke_metric.sh timesync-test-project
+
+# create a GKE cluster in this project with clock-sync configured and GKE based monitoring
+./create_gke_cluster.sh timesync-test-project us-west1 test-cluster-1
+
+# create a second GKE cluster in this project with clock-sync configured and GKE based monitoring
+./create_gke_cluster.sh timesync-test-project us-west1 test-cluster-2
+
+```
+
+The [`create_gke_metric.sh`](gke/create_gke_metric.sh) script configures the
+project to allow log collection from GKE workload, configures a log based metric
+to extract the relevant clock accuracy data into a monitoring compatible form
+and finally creates a dashboard combining platform and VM metrics into a
+tracability metric for each node.
+
+The [`create_gke_cluster.sh`](gke/create_gke_cluster.sh) script creates a GKE
+cluster and configures it to leverage TimeSync. The cluster is created with the
+nodes "tainted" to ensure the daemonset is applied to each node before workload
+can start running on it. Once the cluster is created, the script apply the
+following configurations to it:
+
+* [`Service account`](gke/serviceaccount.yaml), [`role`](gke/cluster-role.yaml) and [`bindings`](gke/cluster-role-binding.yaml) to allow the DaemonSet to untaint the node once configured
+
+* [`ConfigMap`](gke/cm-entrypoint.yaml) with the script used by the DaemonSet node initializer to load PTP-KVM, configure chrony and untaint the node once it is configured and synchronized.
+
+* [`DaemonSet`](gke/daemonset.yaml) which configures two init containers for each node - "node-initializers" which executes the script from the ConfigMap, and "logshipper" which ships chrony's tracking log to GKE's workload logging system.
+
+Together, these configurations ensure all nodes in the cluster are enabled for
+TimeSync and collect the telemetry from them to Google's cloud logging, where it
+is converted to metric and can be monitored and analyzed.
