@@ -1,7 +1,7 @@
 {
     "name": "phc-clock-max-error-gce",
     "description": "Maximum error of the VM clock from the host clock exposed by ptp_kvm",
-    "filter": "logName=\"projects/clock-accuracy/logs/chrony_tracking_receiver\"",
+    "filter": "logName=\"projects/PROJECT_ID/logs/chrony_tracking_receiver\"",
     "metricDescriptor": {
                         "metricKind": "DELTA",
                         "valueType": "DISTRIBUTION",
