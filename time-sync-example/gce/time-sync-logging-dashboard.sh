@@ -21,5 +21,8 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/logging.logWriter"
 
-gcloud logging metrics create phc-clock-max-error-gce --config-from-file=clock-error-metric.json
-gcloud monitoring dashboards create --config-from-file=metric-dashboard.json
+cp clock-error-metric.json /tmp/clock-error-metric.json
+sed -i "s/PROJECT_ID/${PROJECT_ID}/" /tmp/clock-error-metric.json
+
+gcloud logging metrics create --project "${PROJECT_ID}" phc-clock-max-error-gce --config-from-file=/tmp/clock-error-metric.json
+gcloud monitoring dashboards create --project "${PROJECT_ID}" --config-from-file=metric-dashboard.json
