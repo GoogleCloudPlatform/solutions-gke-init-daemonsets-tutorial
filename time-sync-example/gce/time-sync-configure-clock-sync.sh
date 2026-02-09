@@ -66,7 +66,7 @@ systemctl disable systemd-timesyncd.service
 timedatectl set-ntp false
 
 # Configure PTP-KVM based HW refclock, with leap second smearing
-# Google's clocks are doing leap second smearing, and therefor chrony shouldn't attempt to adjust
+# Google's clocks are doing leap second smearing, and therefore chrony shouldn't attempt to adjust
 # the time received from PTP-KVM to adjust for leap seconds.
 sed "s/^leapsectz/#leapsectz/" -i $CHRONY_CONF
 echo "refclock PHC /dev/ptp_kvm poll -1" >>$CHRONY_CONF

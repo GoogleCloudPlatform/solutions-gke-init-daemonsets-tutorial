@@ -1,0 +1,8 @@
+---
+rules:
+  dependabot-cooldown:
+    disable: true
+  unpinned-uses:
+    ignore:
+      - dependabot-automation.yaml
+      - main.yaml
