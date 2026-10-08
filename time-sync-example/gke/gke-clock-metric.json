@@ -1,21 +1,14 @@
 {
     "name": "phc-clock-max-error",
     "description": "Maximum error of the VM clock from the host clock exposed by ptp_kvm",
-    "filter": "resource.type=\"k8s_container\"\n resource.labels.namespace_name=\"default\"\n resource.labels.container_name=\"logshipper\"",
+    "filter": "resource.type=\"k8s_node\" AND log_id(\"chrony.tracking\")",
     "metricDescriptor": {
         "metricKind": "DELTA",
         "valueType": "DISTRIBUTION",
         "unit": "s",
-        "labels": [
-            {
-                "key": "resourceName",
-                "valueType": "STRING",
-                "description": "The name of the resource extracted from the log payload"
-            }
-        ]
+        "labels": []
     },
     "valueExtractor": "REGEXP_EXTRACT(textPayload, \"^.*PHC0.* ([-\\\\d\\\\.eE]+)$\")",
-    "labelExtractors": { "resourceName" : "REGEXP_EXTRACT(textPayload, \"(.*): .*\")"},
     "bucketOptions": {
         "explicitBuckets": {
             "bounds": [
